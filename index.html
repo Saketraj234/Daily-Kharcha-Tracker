@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Daily Kharcha Tracker</title>
+    <!-- Tailwind CSS for modern layout -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        primary: '#6366f1',
+                        secondary: '#10b981',
+                        danger: '#ef4444',
+                        'dark-bg': '#0f172a',
+                        'dark-card': '#1e293b',
+                        'dark-text': '#f1f5f9'
+                    }
+                }
+            }
+        }
+    </script>
+    <!-- Google Fonts -->
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- SheetJS for Excel Export -->
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+    </style>
+</head>
+<body class="bg-dark-bg text-dark-text min-h-screen transition-colors duration-300">
+    
+    <!-- Navbar -->
+    <nav class="bg-dark-card shadow-sm sticky top-0 z-50">
+        <div class="max-w-6xl mx-auto px-4 h-16 flex justify-between items-center">
+            <div class="flex items-center gap-2">
+                <div class="bg-primary p-2 rounded-lg text-white">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                </div>
+                <h1 class="text-xl font-bold tracking-tight">Kharcha <span class="text-primary">Tracker</span></h1>
+            </div>
+            <div class="flex items-center gap-4">
+                <button id="exportBtn" class="bg-gray-700 hover:bg-gray-600 px-4 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center gap-2">
+                    <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                    Export
+                </button>
+            </div>
+        </div>
+    </nav>
+
+    <main class="max-w-6xl mx-auto p-4 lg:p-8">
+        <!-- Dashboard Section -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="bg-dark-card p-6 rounded-2xl shadow-sm border-l-4 border-primary animate-slide-up">
+                <p class="text-sm font-medium text-gray-400">Total Income</p>
+                <h3 id="totalIncome" class="text-3xl font-bold text-secondary mt-1">₹0</h3>
+            </div>
+            <div class="bg-dark-card p-6 rounded-2xl shadow-sm border-l-4 border-danger animate-slide-up" style="animation-delay: 100ms">
+                <p class="text-sm font-medium text-gray-400">Total Expenses</p>
+                <h3 id="totalExpense" class="text-3xl font-bold text-danger mt-1">₹0</h3>
+            </div>
+            <div class="bg-dark-card p-6 rounded-2xl shadow-sm border-l-4 border-indigo-500 animate-slide-up" style="animation-delay: 200ms">
+                <p class="text-sm font-medium text-gray-400">Remaining Balance</p>
+                <h3 id="balance" class="text-3xl font-bold text-primary mt-1">₹0</h3>
+            </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <!-- Left Column: Forms & Filters -->
+            <div class="lg:col-span-1 space-y-8">
+                <!-- Add Transaction Form -->
+                <section class="bg-dark-card p-6 rounded-2xl shadow-sm animate-fade-in">
+                    <h2 class="text-lg font-bold mb-4 flex items-center gap-2">
+                        <span class="bg-primary/10 text-primary p-1.5 rounded-lg">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4" /></svg>
+                        </span>
+                        Add Transaction
+                    </h2>
+                    <form id="transactionForm" class="space-y-4">
+                        <input type="hidden" id="editId">
+                        <div class="grid grid-cols-2 gap-2 p-1 bg-gray-700 rounded-xl mb-4">
+                            <button type="button" id="typeIncome" class="type-btn py-2 rounded-lg text-sm font-bold transition-all bg-gray-600 shadow-sm" data-type="income">Income</button>
+                            <button type="button" id="typeExpense" class="type-btn py-2 rounded-lg text-sm font-bold transition-all text-gray-500" data-type="expense">Expense</button>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Description</label>
+                            <input type="text" id="desc" placeholder="e.g. Salary, Grocery" required class="w-full bg-gray-700 border-none rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-primary outline-none transition-all">
+                        </div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Amount (₹)</label>
+                                <input type="number" id="amount" placeholder="0.00" required class="w-full bg-gray-700 border-none rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-primary outline-none transition-all">
+                            </div>
+                            <div>
+                                <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Category</label>
+                                <select id="category" class="w-full bg-gray-700 border-none rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-primary outline-none transition-all">
+                                    <!-- Categories will be injected here -->
+                                </select>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="block text-xs font-bold text-gray-400 uppercase mb-1">Date</label>
+                            <input type="date" id="date" required class="w-full bg-gray-700 border-none rounded-xl px-4 py-2.5 focus:ring-2 focus:ring-primary outline-none transition-all">
+                        </div>
+                        <button type="submit" id="submitBtn" class="w-full bg-primary hover:bg-indigo-700 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-primary/20">Add Transaction</button>
+                    </form>
+                </section>
+
+                <!-- Monthly Budget -->
+                <section class="bg-dark-card p-6 rounded-2xl shadow-sm animate-fade-in">
+                    <h2 class="text-lg font-bold mb-4 flex items-center gap-2">
+                        <span class="bg-secondary/10 text-secondary p-1.5 rounded-lg">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
+                        </span>
+                        Monthly Budget
+                    </h2>
+                    <div class="flex gap-2 mb-4">
+                        <input type="number" id="budgetInput" placeholder="Set Budget" class="flex-1 bg-gray-700 border-none rounded-xl px-2 py-2 focus:ring-2 focus:ring-primary outline-none">
+                        <button id="saveBudgetBtn" class="bg-secondary text-white px-4 rounded-xl font-bold">Save</button>
+                    </div>
+                    <div id="budgetProgressWrapper" class="hidden">
+                        <div class="flex justify-between text-xs font-bold mb-1">
+                            <span>Used: <span id="budgetUsed">₹0</span></span>
+                            <span>Target: <span id="budgetTarget">₹0</span></span>
+                        </div>
+                        <div class="w-full bg-gray-700 rounded-full h-2 overflow-hidden">
+                            <div id="budgetProgressBar" class="bg-primary h-full transition-all duration-500" style="width: 0%"></div>
+                        </div>
+                        <p id="budgetWarning" class="text-[10px] mt-2 text-danger font-bold hidden">⚠️ Warning: Budget Exceeded!</p>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Right Column: Charts & History -->
+            <div class="lg:col-span-2 space-y-8">
+                <!-- Charts Section -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <section class="bg-dark-card p-6 rounded-2xl shadow-sm">
+                        <h2 class="text-sm font-bold text-gray-400 uppercase mb-4">Category-wise Expenses</h2>
+                        <div class="h-48 flex items-center justify-center">
+                            <canvas id="categoryChart"></canvas>
+                        </div>
+                    </section>
+                    <section class="bg-dark-card p-6 rounded-2xl shadow-sm">
+                        <h2 class="text-sm font-bold text-gray-400 uppercase mb-4">Daily Trend (Last 7 Days)</h2>
+                        <div class="h-48 flex items-center justify-center">
+                            <canvas id="dailyChart"></canvas>
+                        </div>
+                    </section>
+                </div>
+
+                <!-- Transaction History -->
+                <section class="bg-dark-card p-6 rounded-2xl shadow-sm flex-1 flex flex-col min-h-[500px]">
+                    <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
+                        <h2 class="text-xl font-bold">Transaction History</h2>
+                        <div class="flex flex-wrap items-center gap-3">
+                            <select id="filterCategory" class="bg-gray-700 border-none rounded-lg px-3 py-1.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary">
+                                <option value="all">All Categories</option>
+                            </select>
+                            <input type="month" id="filterMonth" class="bg-gray-700 border-none rounded-lg px-3 py-1.5 text-xs font-semibold outline-none focus:ring-2 focus:ring-primary">
+                        </div>
+                    </div>
+
+                    <div id="transactionList" class="space-y-3 flex-1 overflow-y-auto max-h-[600px] pr-2 custom-scrollbar">
+                        <!-- List items will be injected here -->
+                        <div class="text-center py-10 text-gray-400">
+                            <p>No transactions found.</p>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </div>
+    </main>
+
+    <script src="script.js"></script>
+</body>
+</html>
