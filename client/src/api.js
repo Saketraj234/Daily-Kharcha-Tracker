@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: '/api',
+  baseURL: 'https://daily-kharcha-tracker.onrender.com/',
 });
 
 // Add token to requests if available
