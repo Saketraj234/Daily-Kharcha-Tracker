@@ -4,7 +4,7 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const path = require('path');
-require('dotenv').config();
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -12,7 +12,6 @@ const PORT = process.env.PORT || 5000;
 // Middleware
 app.use(cors());
 app.use(express.json());
-app.use(express.static(path.join(__dirname, '/')));
 
 // MongoDB Connection
 mongoose.connect(process.env.MONGODB_URI, {
@@ -62,7 +61,7 @@ const auth = (req, res, next) => {
     req.user = decoded;
     next();
   } catch (e) {
-    res.status(400).json({ message: 'Token is not valid' });
+    res.status(401).json({ message: 'Token is not valid' });
   }
 };
 
@@ -81,7 +80,7 @@ app.post('/api/auth/register', checkDB, async (req, res) => {
     await user.save();
 
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '7d' });
-    res.json({ token, user: { id: user._id, email: user.email } });
+    res.json({ token, user: { id: user._id, email: user.email, monthlyBudget: user.monthlyBudget } });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }
@@ -104,46 +103,39 @@ app.post('/api/auth/login', checkDB, async (req, res) => {
   }
 });
 
-// Get User Profile
-app.get('/api/auth/user', auth, checkDB, async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id).select('-password');
-    res.json(user);
-  } catch (err) {
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
-// Update Budget
-app.post('/api/auth/budget', auth, checkDB, async (req, res) => {
-  const { monthlyBudget } = req.body;
-  try {
-    const user = await User.findByIdAndUpdate(req.user.id, { monthlyBudget }, { new: true });
-    res.json(user);
-  } catch (err) {
-    res.status(500).json({ message: 'Server error' });
-  }
-});
-
 // --- TRANSACTION ROUTES ---
 
-// Get All Transactions
-app.get('/api/transactions', auth, checkDB, async (req, res) => {
+// Get all transactions for user
+app.get('/api/transactions', auth, async (req, res) => {
+  const { month, category } = req.query;
+  const query = { userId: req.user.id };
+  
+  if (month) {
+    query.date = { $regex: `^${month}` };
+  }
+  if (category && category !== 'all') {
+    query.category = category;
+  }
+
   try {
-    const transactions = await Transaction.find({ userId: req.user.id }).sort({ date: -1, createdAt: -1 });
+    const transactions = await Transaction.find(query).sort({ date: -1, createdAt: -1 });
     res.json(transactions);
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Add Transaction
-app.post('/api/transactions', auth, checkDB, async (req, res) => {
+// Add transaction
+app.post('/api/transactions', auth, async (req, res) => {
   const { desc, amount, category, date, type } = req.body;
   try {
     const newTransaction = new Transaction({
       userId: req.user.id,
-      desc, amount, category, date, type
+      desc,
+      amount: parseFloat(amount),
+      category,
+      date,
+      type
     });
     const transaction = await newTransaction.save();
     res.json(transaction);
@@ -152,35 +144,56 @@ app.post('/api/transactions', auth, checkDB, async (req, res) => {
   }
 });
 
-// Update Transaction
-app.put('/api/transactions/:id', auth, checkDB, async (req, res) => {
+// Update transaction
+app.put('/api/transactions/:id', auth, async (req, res) => {
   try {
-    const transaction = await Transaction.findOneAndUpdate(
-      { _id: req.params.id, userId: req.user.id },
-      req.body,
-      { new: true }
-    );
+    let transaction = await Transaction.findById(req.params.id);
     if (!transaction) return res.status(404).json({ message: 'Transaction not found' });
+    if (transaction.userId.toString() !== req.user.id) return res.status(401).json({ message: 'Unauthorized' });
+
+    transaction = await Transaction.findByIdAndUpdate(req.params.id, { $set: req.body }, { new: true });
     res.json(transaction);
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Delete Transaction
-app.delete('/api/transactions/:id', auth, checkDB, async (req, res) => {
+// Delete transaction
+app.delete('/api/transactions/:id', auth, async (req, res) => {
   try {
-    const transaction = await Transaction.findOneAndDelete({ _id: req.params.id, userId: req.user.id });
+    const transaction = await Transaction.findById(req.params.id);
     if (!transaction) return res.status(404).json({ message: 'Transaction not found' });
+    if (transaction.userId.toString() !== req.user.id) return res.status(401).json({ message: 'Unauthorized' });
+
+    await Transaction.findByIdAndDelete(req.params.id);
     res.json({ message: 'Transaction removed' });
   } catch (err) {
     res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Serve HTML
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'index.html'));
+// Update budget
+app.put('/api/user/budget', auth, async (req, res) => {
+  const { monthlyBudget } = req.body;
+  try {
+    const user = await User.findByIdAndUpdate(req.user.id, { $set: { monthlyBudget } }, { new: true });
+    res.json(user);
+  } catch (err) {
+    res.status(500).json({ message: 'Server error' });
+  }
 });
+
+// Serve static assets in production
+if (process.env.NODE_ENV === 'production') {
+  const distPath = path.join(__dirname, '../client/dist');
+  console.log('Serving static files from:', distPath);
+  app.use(express.static(distPath));
+  app.get('/', (req, res) => {
+    res.sendFile(path.resolve(distPath, 'index.html'));
+  });
+  app.get('*', (req, res) => {
+    res.sendFile(path.resolve(distPath, 'index.html'));
+  });
+}
 
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
